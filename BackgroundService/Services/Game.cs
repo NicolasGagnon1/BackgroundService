@@ -5,12 +5,14 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using SuperChance.DTOs;
+using System.Numerics;
 
 namespace BackgroundService.Services
 {
     public class UserData
     {
         public int Score { get; set; } = 0;
+        public int Multiplier { get; set; } = 1;
         // TODO: Ajouter une propriété pour le multiplier
     }
 
@@ -45,13 +47,25 @@ namespace BackgroundService.Services
         {
             UserData userData = _data[userId];
             // TODO: Ajouter la valeur du muliplier au lieu d'ajouter 1
-            userData.Score += 1;
+            userData.Score += userData.Multiplier;
         }
 
         // TODO: Ajouter une méthode pour acheter un multiplier. Le coût est le prix de base * le multiplier actuel
         // Les prix sont donc de 10, 20, 40, 80, 160 (Si le prix de base est 10)
         // Réduire le score du coût du multiplier
         // Doubler le multiplier du joueur
+
+        public async Task BuyMultiplier(string userId)
+        {
+            UserData userData = _data[userId];
+            int cout = MULTIPLIER_BASE_PRICE * userData.Multiplier;
+            if(userData.Score > cout)
+            {
+                userData.Score -= cout;
+                userData.Multiplier *= 2;
+                _gameHub.Clients.Users(userId).SendAsync("UserData", userData);
+            }
+        }
 
         public async Task EndRound(CancellationToken stoppingToken)
         {
@@ -76,6 +90,7 @@ namespace BackgroundService.Services
             foreach (var key in _data.Keys)
             {
                 // TODO: On remet le multiplier à 1!
+                _data[key].Multiplier = 1;
                 _data[key].Score = 0;
             }
 
@@ -96,7 +111,15 @@ namespace BackgroundService.Services
                 BackgroundServiceContext backgroundServiceContext =
                     scope.ServiceProvider.GetRequiredService<BackgroundServiceContext>();
 
-                // TODO: Mettre à jour et sauvegarder le nbWinds des joueurs
+                // TODO: Mettre à jour et sauvegarder le nbWins des joueurs
+                foreach (string userId in winners)
+                {
+                    Player player = backgroundServiceContext.Player.Where(x => x.UserId == userId).SingleOrDefault();
+                    player.NbWins++;
+                    _gameHub.Clients.Users(winners).SendAsync("NbWins", player.NbWins, stoppingToken);
+                    backgroundServiceContext.SaveChanges();
+                }
+                //_gameHub.Clients.All.SendAsync("NbWins", backgroundServiceContext., stoppingToken);
 
                 List<IdentityUser> users = await backgroundServiceContext.Users.Where(u => winners.Contains(u.Id)).ToListAsync();
 
